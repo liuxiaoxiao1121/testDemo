@@ -1,0 +1,101 @@
+version: "1.5"
+
+stages:
+  - Parallel ACI
+  - 发布Pypi
+agent:
+  docker:
+    image: reg.docker.alibaba-inc.com/atorch/aci-base:20230327
+onlyExecuteLastPipeline: true #同一个分支只执行一个ci
+
+code_format:
+  stage: Parallel ACI
+  aciTags: DOCKER
+  agent:
+    docker:
+      image: reg.docker.alibaba-inc.com/atorch/aci-base:20230327
+  script:
+    - |
+      set -e
+      cd $WORKSPACE/
+      sh tools/scripts/pre-commit.sh
+
+  pluginConfig:
+    appname: atorch
+    source: allpython
+    type: UT
+  timeout: 60
+
+
+Pytorch_1.12.1_ut:
+  stage: Parallel ACI
+  aciTags: DOCKER
+  agent:
+    docker:
+      image: reg.docker.alibaba-inc.com/atorch/aci-base:20230327
+  script:
+    - |
+      set -e
+      cd $WORKSPACE/
+      python -m grpc_tools.protoc -I. \
+        --python_out=. --grpc_python_out=. \
+        atorch/protos/coworker.proto
+      PYTHONPATH=$WORKSPACE pytest atorch/tests
+  pluginConfig:
+    appname: atorch
+    source: allpython
+    type: UT
+  timeout: 60
+
+Pytorch_1.11.0_ut:
+  stage: Parallel ACI
+  aciTags: DOCKER
+  agent:
+    docker:
+      image: reg.docker.alibaba-inc.com/atorch/aci-base:1.11.20220920
+  script:
+    - |
+      set -e
+      cd $WORKSPACE/
+      python -m grpc_tools.protoc -I. \
+        --python_out=. --grpc_python_out=. \
+        atorch/protos/coworker.proto
+      PYTHONPATH=$WORKSPACE pytest atorch/tests
+  pluginConfig:
+    appname: atorch
+    source: allpython
+    type: UT
+  timeout: 60
+
+compile_package:
+  stage: Parallel ACI
+  aciTags: DOCKER
+  agent:
+    docker:
+      image: reg.docker.alibaba-inc.com/atorch/aci-base:20230327
+  script:
+    - |
+      set -e
+      cd $WORKSPACE/
+      sh tools/scripts/build.sh
+  publisher:
+    archiveArtifacts:
+      artifacts: 'dist/*'
+      allowEmptyArchive: true
+  pluginConfig:
+    appname: atorch
+    source: allpython
+    type: UT
+  timeout: 60
+publish-aicv:
+  stage: 发布Pypi
+  aciTags: DOCKER
+  only:
+    refs:
+      - ^release_*
+  agent:
+    docker:
+      image: reg.docker.alibaba-inc.com/atorch/aci-base:20230327 # 镜像里不能有NVIDIA 开头的环境变量，ACI有特殊处理
+  script: # 在container中执行的命令 parameters不是真正的环境变量，ACI执行时替换的
+    - |
+      bash tools/scripts/deploy2artifacts.sh
